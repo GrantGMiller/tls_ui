@@ -1,18 +1,14 @@
 import datetime
-
-from extronlib import event
-import extronlib.ui
-from extronlib.system import Clock, MESet
+from extronlib_pro import (
+    event,
+    Button,
+    Clock, MESet, Wait,
+    IsExtronHardware,
+)
 
 AVAILABLE = 'Available'
 RED = 1
 GREEN = 0
-
-
-class Button(extronlib.ui.Button):
-    def SetState(self, newState):
-        if self.State != newState:
-            super().SetState(newState)
 
 
 class TLS_UI:
@@ -38,7 +34,10 @@ class TLS_UI:
             timelineDivisionsPerHour,  # int
 
             menuID,
+
+            debug=False,
     ):
+        self.debug = debug
         self.btnStatusBar = Button(tlp, statusBarID)
 
         self.btnRoomName = Button(tlp, roomNameID)
@@ -91,11 +90,17 @@ class TLS_UI:
         self._actionText = []
 
         self._busyTimes = []  # list of tuples of datetime's like [(startDT, endDT), (startDT, endDT)]
+        self._waitUpdateActionButtons = Wait(0.1, self._UpdateActionButtons)
 
         # init
         self._InitButtonEvents()
         self.SetAvailable()
         self._UpdateTimeline()
+        self.mesetTimelineButtons.SetCurrent(self.timelineButtons[0])
+
+    def print(self, *a, **k):
+        if self.debug:
+            print(*a, **k)
 
     def SetBusy(
             self,
@@ -109,9 +114,10 @@ class TLS_UI:
         self.btnMeetingSubject.SetText(meetingSubject)
         self.btnOrganizer.SetText(organizer or '')
         self.btnReservationTime.SetText('{} - {}'.format(
-            startDT.strftime('%I:%M %p'),
-            endDT.strftime('%I:%M %p'),
+            startDT.strftime('%{}I:%M %p'.format('-' if IsExtronHardware() else '')),
+            endDT.strftime('%{}I:%M %p'.format('-' if IsExtronHardware() else '')),
         ))
+        self.AddBusyTime(startDT, endDT)
 
     def SetAvailable(self):
         self.btnStatusBar.SetState(GREEN)
@@ -120,14 +126,15 @@ class TLS_UI:
         self.btnReservationTime.SetText('')
 
     def ShowActionButton(self, text):
+        self.HideActionButton(text)
         if text not in self._actionText:
             self._actionText.append(text)
-        self._UpdateActionButtons()
+        self._waitUpdateActionButtons.Restart()
 
     def HideActionButton(self, text):
         while text in self._actionText:
             self._actionText.remove(text)
-        self._UpdateActionButtons()
+        self._waitUpdateActionButtons.Restart()
 
     def _UpdateActionButtons(self):
         for index, btn in enumerate(self.actionButtons):
@@ -138,16 +145,16 @@ class TLS_UI:
                 btn.SetVisible(False)
 
     def _UpdateTimeline(self, *a, **k):
-        print('_UpdateTimeline(', a, k)
+        self.print('_UpdateTimeline(', a, k)
         nowDT = datetime.datetime.now()
-        self.btnCurrentTime.SetText(nowDT.strftime('%I:%M %p'))
+        self.btnCurrentTime.SetText(nowDT.strftime('%{}I:%M %p'.format('-' if IsExtronHardware() else '')))
 
         btnDT = nowDT.replace(minute=0) if nowDT.minute < 30 else nowDT.replace(minute=30)
         for btn in self.timelineButtons:
             if btnDT.minute == 30:
-                btn.SetText(btnDT.strftime('%I:%M'))
+                btn.SetText(btnDT.strftime('%{}I:%M'.format('-' if IsExtronHardware() else '')))
             else:
-                btn.SetText(btnDT.strftime('%I %p'))
+                btn.SetText(btnDT.strftime('%{}I %p'.format('-' if IsExtronHardware() else '')))
 
             btnDT += datetime.timedelta(minutes=30)
 
@@ -220,7 +227,7 @@ class TLS_UI:
         self._UpdateTimelineStatus()
 
     def _UpdateTimelineStatus(self):
-        print('_busyTimes=', self._busyTimes)
+        self.print('_busyTimes=', self._busyTimes)
         nowDT = datetime.datetime.now().replace(second=0, microsecond=0)
         btnDT = nowDT.replace(minute=0) if nowDT.minute < 30 else nowDT.replace(minute=30)
 
@@ -233,8 +240,9 @@ class TLS_UI:
             btnDT += delta
 
     def IsBusyAt(self, dt):
+        delta = datetime.timedelta(hours=1) / self.timelineDivisionsPerHour
         for startDT, endDT in self._busyTimes:
-            if startDT <= dt <= endDT:
+            if startDT <= dt and dt + delta <= endDT:
                 return True
         else:
             return False

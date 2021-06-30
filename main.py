@@ -54,11 +54,13 @@ def ActionButtonPressedEvent(tls, text):
         tls.ShowActionButton('Extend')
         tls.SetBusy(
             meetingSubject='Subject {}'.format(int(time.time())),
-            startDT=datetime.datetime.now(),
-            endDT=datetime.datetime.now() + datetime.timedelta(minutes=30),
+            startDT=datetime.datetime.now().replace(second=0, microsecond=0),
+            endDT=datetime.datetime.now().replace(second=0, microsecond=0) + datetime.timedelta(minutes=30),
             organizer='Organizer {}'.format(int(time.time())),
         )
     elif text == 'Release':
+        tls.ClearBusyTimes()
+        tls.HideActionButton('Extend')
         tls.HideActionButton('Release')
         tls.ShowActionButton('Reserve')
         tls.SetAvailable()
